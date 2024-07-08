@@ -323,6 +323,28 @@ spec:
         workflowInputs: {
           pr_url: "${{ steps['trigger-build-pr'].output.remoteUrl }}"
         }
+    - id: trigger-build-pr
+      name: PR to Trigger Pipeline Build
+      action: publish:github:pull-request
+      if: ${{ parameters.hostType === 'GitHub' }}
+      input:
+        repoUrl: ${{ parameters.githubServer }}?owner=${{ parameters.repoOwner }}&repo=${{ parameters.repoName }}
+        branchName: trigger-pipeline
+        gitCommitMessage: trigger pipeline build
+        description: "pr to trigger pipeline build"
+        title: trigger pipeline build
+        sourcePath: source
+        targetBranchName: ${{ parameters.branch }}
+    # dispatch the workflow to automerge the pr and trigger the pipeline build
+    - id: trigger_gitlab
+      name: Trigger Gitlab
+      action: gitlab:repo:push
+      if: ${{ parameters.hostType === 'GitLab' }}
+      input:
+        repoUrl: ${{ parameters.gitlabServer }}?owner=${{ parameters.repoOwner }}&repo=${{ parameters.repoName }}
+        branchName: ${{ parameters.branch }}
+        commitMessage: "trigger pipeline build"
+        sourcePath: source
 
 
   # Outputs are displayed to the user after a successful execution of the template.
