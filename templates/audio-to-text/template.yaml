@@ -4,7 +4,7 @@ kind: Template
 metadata:
   name: audio-to-text
   title: Audio to Text Application
-  description: Audio to Text Application example with AI enabled audio transcription
+  description: Build your own AI-enabled audio transcription application. Pick from the model servers available or bring your own.
   tags: ["ai", "whispercpp", "python", "asr"]
 spec:
   type: service
@@ -37,8 +37,8 @@ spec:
               kind: [Group, User]
         modelServer:
           # SED_ASR_MODEL_SERVER_START
-          title: ASR Model Server
-          description: The model server container to use. The deployed model on the server must support automatic speech recognition (ASR).
+          title: Model Server
+          description: Simple HTTP server where WAV Files are passed to the inference model via HTTP requests. The deployed model on the server must support automatic speech recognition (ASR). | [Learn more](https://github.com/containers/ai-lab-recipes/tree/main/model_servers/whispercpp)
           type: string
           default: whisper.cpp
           enum:
@@ -57,10 +57,42 @@ spec:
                   title: Model Server Endpoint
                   type: string
                   description: "The endpoint for an existing model server."
+                includeModelEndpointSecret:
+                  title: Is bearer authentication required?
+                  type: boolean
+                  default: false
+                  ui:help: Create a Secret containing the authentication bearer in the preferred targeted Namespace first.
+              dependencies:
+                includeModelEndpointSecret:
+                  allOf:
+                    - if:
+                        properties:
+                          includeModelEndpointSecret:
+                            const: true
+                      then:
+                        properties:
+                          modelEndpointSecretName:
+                            title: Model Server Endpoint Secret Name
+                            ui:help: Paste in the name of the Secret containing your bearer.
+                            type: string
+                          modelEndpointSecretKey:
+                            title: Model Server Endpoint Secret Key
+                            ui:help: Paste in the key of the Secret containing the bearer value.
+                            type: string
+                        required:
+                          - modelEndpointSecretName
+                          - modelEndpointSecretKey
             # SED_ASR_MODEL_SERVER_START
             - properties:
                 modelServer:
                     const: whisper.cpp
+                modelNameDeployed:
+                  title: Model Name
+                  description: Automatic Speech Recognition | MIT | [Learn more](https://huggingface.co/ggerganov/whisper.cpp)
+                  default: ggerganov/whisper.cpp
+                  type: string
+                  enum:
+                    - ggerganov/whisper.cpp
             # SED_ASR_MODEL_SERVER_END
 
     - title: Application Repository Information
@@ -111,7 +143,7 @@ spec:
                   type: string
                   default: gitlab.com
                   ui:help: "You can also provide the on-prem gitlab server, example: gitlab-gitlab.apps.cluster-ljg9z.sandbox219.opentlc.com"
-    - title: Deployment information
+    - title: Deployment Information
       required:
         - imageRegistry
         - imageOrg
@@ -137,12 +169,12 @@ spec:
         namespace:
           title: Deployment Namespace
           type: string
-          default: rhtap-app
+          default: rhdh-app
           ui:autofocus: true
           ui:options:
             rows: 5
         rhoaiSelected:
-          title: Create workbench for OpenShift AI
+          title: Create Workbench for OpenShift AI
           description: Deploy to OpenShift AI in your app's namespace
           type: boolean
           default: false
@@ -160,11 +192,13 @@ spec:
         targetPath: source
         values:
           name: ${{ parameters.name }}
+          appSummary: An AI enabled audio transcription streamlit application. Upload an audio file to be transcribed.
           namespace: ${{ parameters.namespace }}
           repoURL: https://${{ parameters.githubServer if parameters.hostType === 'GitHub' else parameters.gitlabServer }}/${{ parameters.repoOwner }}/${{ parameters.repoName }}-gitops
           srcRepoURL: https://${{ parameters.githubServer if parameters.hostType === 'GitHub' else parameters.gitlabServer }}/${{ parameters.repoOwner }}/${{ parameters.repoName }}
           appContainer: ${{ 'quay.io/redhat-ai-dev/ai-template-bootstrap-app:latest' if parameters.hostType === 'GitHub' else 'quay.io/redhat-ai-dev/audio-to-text:latest' }}
           appPort: 8501
+          appRunCommand: "streamlit run whisper_client.py"
           modelServiceContainer: quay.io/redhat-ai-dev/whispercpp:latest
           modelServicePort: 8001          
     # Renders all the template variables into the files and directory names and content, and places the result in the workspace.
@@ -177,7 +211,7 @@ spec:
         values:
           name: ${{ parameters.name }}
           namespace: ${{ parameters.namespace }}
-          description: Secure Supply Chain Example for Audio to Text Application example with AI enabled audio transcription 
+          description: Secure Supply Chain Example for Audio to Text Application 
           dockerfile: Containerfile
           buildContext: .
           gitopsSecretName: ${{ 'gitops-auth-secret' if parameters.hostType === 'GitHub' else 'gitlab-auth-secret' }}
@@ -185,7 +219,7 @@ spec:
           tags: '["ai", "whispercpp", "python", "asr"]'
           owner: ${{ parameters.owner }} 
           repoSlug: '${{ parameters.imageOrg }}/${{ parameters.imageName }}'
-          defaultBranch: ${{ parameters.branch }} 
+          defaultBranch: ${{ parameters.branch }}
     - id: fetch-github-action
       name: Fetch GitHub Action
       action: fetch:plain
@@ -235,17 +269,13 @@ spec:
           appName: ${{ parameters.name }}-gitops # for now just use the component name, since it's single component app
           description: This is GitOps manifest for ${{ parameters.name }}
           namespace: ${{ parameters.namespace }}
-          rhtapNamespace: rhtap
-          defaultDeployNamespace: rhtap-app
+          rhdhNamespace: ai-rhdh
           # example: github.com?owner=<owner>&repo=<srcRepo>, the gitops repo name will be <srcRepo>-gitops
           repoURL: https://${{ parameters.githubServer if parameters.hostType === 'GitHub' else parameters.gitlabServer }}/${{ parameters.repoOwner }}/${{ parameters.repoName }}-gitops
           srcRepoURL: https://${{ parameters.githubServer if parameters.hostType === 'GitHub' else parameters.gitlabServer }}/${{ parameters.repoOwner }}/${{ parameters.repoName }}
           argoComponentOverlays: './components/${{ parameters.name }}/overlays'
-          owner: ${{ parameters.owner }} 
-          image: quay.io/redhat-appstudio/dance-bootstrap-app:latest # bootstrap app image as placeholder
-          # actual src image, should be used by tekton PR pipeline to update the image in gitops repo
-          srcImage: '${{ parameters.imageRegistry }}/${{ parameters.imageOrg }}/${{ parameters.imageName }}'
-          argoNS: rhtap
+          owner: ${{ parameters.owner }}
+          argoNS: ai-rhdh
           argoProject: default
           secretRef: ${{ parameters.hostType === 'GitLab' }}
           gitSecret: gitlab-auth-secret
@@ -262,6 +292,9 @@ spec:
           modelServicePort: 8001
           existingModelServer: ${{ parameters.modelServer === 'Existing model server' }}
           modelEndpoint: ${{ parameters.modelEndpoint }}
+          modelEndpointSecretName: ${{ parameters.modelEndpointSecretName }}
+          modelEndpointSecretKey: ${{ parameters.modelEndpointSecretKey }}
+          includeModelEndpointSecret: ${{ parameters.includeModelEndpointSecret }}
           # for RHOAI
           rhoaiSelected: ${{ parameters.rhoaiSelected }}
     - action: fs:rename
@@ -298,7 +331,7 @@ spec:
         protectDefaultBranch: false
         repoVisibility: "public"
     - id: wait-for-github-repository
-      name: Waiting for repository availability
+      name: Waiting for Repository Availability
       action: 'debug:wait'
       input:
         seconds: 3
@@ -321,7 +354,7 @@ spec:
         appName: ${{ parameters.name }}-app-of-apps
         # name set in rhdh config
         argoInstance: default
-        namespace: rhtap
+        namespace: ai-rhdh
         repoUrl: https://${{ parameters.githubServer if parameters.hostType === 'GitHub' else parameters.gitlabServer }}/${{ parameters.repoOwner }}/${{ parameters.repoName }}-gitops.git
         path: './app-of-apps'
     # PR with empty commit
@@ -358,9 +391,9 @@ spec:
         url: ${{ steps['publish-github'].output.remoteUrl if steps['publish-github'].output else steps['publish-gitlab'].output.remoteUrl }}
       - title: GitOps Repository
         url: ${{ steps['publish-github-gitops'].output.remoteUrl if steps['publish-github-gitops'].output else steps['publish-gitlab-gitops'].output.remoteUrl }}
-      - title: Open Component in catalog
+      - title: Open Component in Catalog
         icon: catalog
         entityRef: ${{ steps['register'].output.entityRef }}
-      - title: Open GitOps Resource in catalog
+      - title: Open GitOps Resource in Catalog
         icon: catalog
         entityRef: ${{ steps['register-gitops'].output.entityRef }}

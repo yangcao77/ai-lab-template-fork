@@ -37,9 +37,11 @@ spec:
               kind: [Group, User]
         modelServer:
           # SED_LLM_SERVER_START
-          title: Large Language Model(LLM) Server
-          description: The model server container to use
-          ui:help: If you choose vLLM, ensure your cluster has Nvidia GPU supported, and is with enough cpu and memory
+          title: Model Server
+          description: |
+            llama.cpp: ${MODEL_SERVICE_DESC}. | [Learn more](${MODEL_SERVICE_SRC})
+            
+            vLLM: ${VLLM_DESC}. If you choose vLLM, ensure that your cluster has Nvidia GPU supported (with compute capability 7.0 or higher). Also, it should have enough CPU & memory resources for the model you would like to work with. | [Learn more](${VLLM_SRC})
           default: llama.cpp
           type: string
           enum:
@@ -47,16 +49,16 @@ spec:
             - llama.cpp
           # SED_LLM_SERVER_END
           # SED_ASR_MODEL_SERVER_START
-          title: ASR Model Server
-          description: The model server container to use. The deployed model on the server must support automatic speech recognition (ASR).
+          title: Model Server
+          description: ${MODEL_SERVICE_DESC}. The deployed model on the server must support automatic speech recognition (ASR). | [Learn more](${MODEL_SERVICE_SRC})
           type: string
           default: whisper.cpp
           enum:
             - whisper.cpp
           # SED_ASR_MODEL_SERVER_END
           # SED_DETR_MODEL_SERVER_START
-          title: DETR Model Server
-          description: The model server container to use. The deployed model on the server must support object detection.
+          title: Model Server
+          description: ${MODEL_SERVICE_DESC}. The deployed model on the server must support object detection. | [Learn more](${MODEL_SERVICE_SRC})
           type: string
           default: detr-resnet-101
           enum:
@@ -84,23 +86,76 @@ spec:
                   type: string
                   ui:help: "The name of the model deployed on the model server you would like to use."
                 # SED_LLM_SERVER_END
+                includeModelEndpointSecret:
+                  title: Is bearer authentication required?
+                  type: boolean
+                  default: false
+                  ui:help: Create a Secret containing the authentication bearer in the preferred targeted Namespace first.
+              dependencies:
+                includeModelEndpointSecret:
+                  allOf:
+                    - if:
+                        properties:
+                          includeModelEndpointSecret:
+                            const: true
+                      then:
+                        properties:
+                          modelEndpointSecretName:
+                            title: Model Server Endpoint Secret Name
+                            ui:help: Paste in the name of the Secret containing your bearer.
+                            type: string
+                          modelEndpointSecretKey:
+                            title: Model Server Endpoint Secret Key
+                            ui:help: Paste in the key of the Secret containing the bearer value.
+                            type: string
+                        required:
+                          - modelEndpointSecretName
+                          - modelEndpointSecretKey
             # SED_LLM_SERVER_START
             - properties:
                 modelServer:
-                    const: vLLM
+                  const: vLLM
+                modelNameDeployed:
+                  title: Model Name
+                  description: ${LLM_MODEL_CLASSIFICATION} | ${LLM_MODEL_LICENSE} | [Learn more](${LLM_MODEL_SRC})
+                  default: ${LLM_MODEL_NAME}
+                  type: string
+                  enum:
+                    - ${LLM_MODEL_NAME}
             - properties:
                 modelServer:
-                    const: llama.cpp
+                  const: llama.cpp
+                modelNameDeployed:
+                  title: Model Name
+                  description: ${LLM_MODEL_CLASSIFICATION} | ${LLM_MODEL_LICENSE} | [Learn more](${LLM_MODEL_SRC})
+                  default: ${LLM_MODEL_NAME}
+                  type: string
+                  enum:
+                    - ${LLM_MODEL_NAME}
             # SED_LLM_SERVER_END
             # SED_ASR_MODEL_SERVER_START
             - properties:
                 modelServer:
                     const: whisper.cpp
+                modelNameDeployed:
+                  title: Model Name
+                  description: ${ASR_MODEL_CLASSIFICATION} | ${ASR_MODEL_LICENSE} | [Learn more](${ASR_MODEL_SRC})
+                  default: ${ASR_MODEL_NAME}
+                  type: string
+                  enum:
+                    - ${ASR_MODEL_NAME}
             # SED_ASR_MODEL_SERVER_END
             # SED_DETR_MODEL_SERVER_START
             - properties:
                 modelServer:
                     const: detr-resnet-101
+                modelNameDeployed:
+                  title: Model Name
+                  description: ${DETR_MODEL_CLASSIFICATION} | ${DETR_MODEL_LICENSE} | [Learn more](${DETR_MODEL_SRC})
+                  default: ${DETR_MODEL_NAME}
+                  type: string
+                  enum:
+                    - ${DETR_MODEL_NAME}
             # SED_DETR_MODEL_SERVER_END
 
     - title: Application Repository Information
@@ -139,7 +194,7 @@ spec:
                 githubServer:
                   title: Repository Server
                   type: string
-                  default: github.com
+                  default: ${GITHUB__DEFAULT__HOST}
                   ui:help: "You can also provide the on-prem github server, example: github-github.apps.cluster-ljg9z.sandbox219.opentlc.com"
             - required:
                 - gitlabServer
@@ -149,9 +204,9 @@ spec:
                 gitlabServer:
                   title: Repository Server
                   type: string
-                  default: gitlab.com
+                  default: ${GITLAB__DEFAULT__HOST}
                   ui:help: "You can also provide the on-prem gitlab server, example: gitlab-gitlab.apps.cluster-ljg9z.sandbox219.opentlc.com"
-    - title: Deployment information
+    - title: Deployment Information
       required:
         - imageRegistry
         - imageOrg
@@ -182,7 +237,7 @@ spec:
           ui:options:
             rows: 5
         rhoaiSelected:
-          title: Create workbench for OpenShift AI
+          title: Create Workbench for OpenShift AI
           description: Deploy to OpenShift AI in your app's namespace
           type: boolean
           default: false
@@ -200,11 +255,13 @@ spec:
         targetPath: source
         values:
           name: ${{ parameters.name }}
+          appSummary: ${APP_SUMMARY}
           namespace: ${{ parameters.namespace }}
           repoURL: https://${{ parameters.githubServer if parameters.hostType === 'GitHub' else parameters.gitlabServer }}/${{ parameters.repoOwner }}/${{ parameters.repoName }}-gitops
           srcRepoURL: https://${{ parameters.githubServer if parameters.hostType === 'GitHub' else parameters.gitlabServer }}/${{ parameters.repoOwner }}/${{ parameters.repoName }}
           appContainer: ${{ 'quay.io/redhat-ai-dev/ai-template-bootstrap-app:latest' if parameters.hostType === 'GitHub' else '${APP_INTERFACE_CONTAINER}' }}
           appPort: ${APP_PORT}
+          appRunCommand: "${APP_RUN_COMMAND}"
           modelServiceContainer: ${MODEL_SERVICE_CONTAINER}
           modelServicePort: ${MODEL_SERVICE_PORT}          
     # Renders all the template variables into the files and directory names and content, and places the result in the workspace.
@@ -225,7 +282,7 @@ spec:
           tags: 'sed.edit.APPTAGS'
           owner: ${{ parameters.owner }} 
           repoSlug: '${{ parameters.imageOrg }}/${{ parameters.imageName }}'
-          defaultBranch: ${{ parameters.branch }} 
+          defaultBranch: ${{ parameters.branch }}
     - id: fetch-github-action
       name: Fetch GitHub Action
       action: fetch:plain
@@ -275,16 +332,12 @@ spec:
           appName: ${{ parameters.name }}-gitops # for now just use the component name, since it's single component app
           description: This is GitOps manifest for ${{ parameters.name }}
           namespace: ${{ parameters.namespace }}
-          rhtapNamespace: ${RHTAP__DEFAULT__NAMESPACE}
-          defaultDeployNamespace: ${DEFAULT__DEPLOYMENT__NAMESPACE__PREFIX}
+          rhdhNamespace: ${RHDH__DEFAULT__NAMESPACE}
           # example: github.com?owner=<owner>&repo=<srcRepo>, the gitops repo name will be <srcRepo>-gitops
           repoURL: https://${{ parameters.githubServer if parameters.hostType === 'GitHub' else parameters.gitlabServer }}/${{ parameters.repoOwner }}/${{ parameters.repoName }}-gitops
           srcRepoURL: https://${{ parameters.githubServer if parameters.hostType === 'GitHub' else parameters.gitlabServer }}/${{ parameters.repoOwner }}/${{ parameters.repoName }}
           argoComponentOverlays: './components/${{ parameters.name }}/overlays'
-          owner: ${{ parameters.owner }} 
-          image: quay.io/redhat-appstudio/dance-bootstrap-app:latest # bootstrap app image as placeholder
-          # actual src image, should be used by tekton PR pipeline to update the image in gitops repo
-          srcImage: '${{ parameters.imageRegistry }}/${{ parameters.imageOrg }}/${{ parameters.imageName }}'
+          owner: ${{ parameters.owner }}
           argoNS: ${ARGOCD__DEFAULT__NAMESPACE}
           argoProject: ${ARGOCD__DEFAULT__PROJECT}
           secretRef: ${{ parameters.hostType === 'GitLab' }}
@@ -304,13 +357,22 @@ spec:
           # for vllm
           vllmSelected: ${{ parameters.modelServer === 'vLLM' }}
           vllmModelServiceContainer: ${VLLM_CONTAINER}
-          modelName: ${{ parameters.modelName if parameters.modelServer === 'Existing model server' else '${VLLM_MODEL_NAME}' }}
-          maxModelLength: ${VLLM_MAX_MODEL_LEN}
+          modelName: ${{ parameters.modelName if parameters.modelServer === 'Existing model server' else '${LLM_MODEL_NAME}' }}
+          maxModelLength: ${LLM_MAX_MODEL_LEN}
           # SED_LLM_SERVER_END
           existingModelServer: ${{ parameters.modelServer === 'Existing model server' }}
           modelEndpoint: ${{ parameters.modelEndpoint }}
+          modelEndpointSecretName: ${{ parameters.modelEndpointSecretName }}
+          modelEndpointSecretKey: ${{ parameters.modelEndpointSecretKey }}
+          includeModelEndpointSecret: ${{ parameters.includeModelEndpointSecret }}
           # for RHOAI
           rhoaiSelected: ${{ parameters.rhoaiSelected }}
+          # SED_DB_START
+          # Database is required for the RAG templates
+          dbRequired: ${SUPPORT_DB}
+          dbContainer: ${DB_CONTAINER}
+          dbPort: ${DB_PORT}
+          # SED_DB_END
     - action: fs:rename
       id: renameComponentDir
       name: Rename Component Directory
@@ -345,7 +407,7 @@ spec:
         protectDefaultBranch: false
         repoVisibility: "public"
     - id: wait-for-github-repository
-      name: Waiting for repository availability
+      name: Waiting for Repository Availability
       action: 'debug:wait'
       input:
         seconds: 3
@@ -405,9 +467,9 @@ spec:
         url: ${{ steps['publish-github'].output.remoteUrl if steps['publish-github'].output else steps['publish-gitlab'].output.remoteUrl }}
       - title: GitOps Repository
         url: ${{ steps['publish-github-gitops'].output.remoteUrl if steps['publish-github-gitops'].output else steps['publish-gitlab-gitops'].output.remoteUrl }}
-      - title: Open Component in catalog
+      - title: Open Component in Catalog
         icon: catalog
         entityRef: ${{ steps['register'].output.entityRef }}
-      - title: Open GitOps Resource in catalog
+      - title: Open GitOps Resource in Catalog
         icon: catalog
         entityRef: ${{ steps['register-gitops'].output.entityRef }}
